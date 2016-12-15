@@ -12,10 +12,13 @@ import Data.Foreign.Generic.Types (Options, SumEncoding(..))
 import Data.Foreign.Index (prop)
 import Data.Generic.Rep (Argument(Argument), Constructor(Constructor), Field(Field), NoArguments(NoArguments), NoConstructors, Product(Product), Rec(Rec), Sum(Inr, Inl))
 import Data.List (List(..), fromFoldable, null, singleton, toUnfoldable, (:))
+import Data.List.NonEmpty (NonEmptyList(..))
 import Data.Maybe (Maybe(..), maybe)
 import Data.Monoid (mempty)
 import Data.Symbol (class IsSymbol, SProxy(..), reflectSymbol)
+import Debug.Trace (trace, traceAnyM)
 import Type.Proxy (Proxy(..))
+import Unsafe.Coerce (unsafeCoerce)
 
 class GenericDecode a where
   decodeOpts :: Options -> Foreign -> F a
@@ -157,6 +160,7 @@ instance genericDecodeArgsRec
   :: GenericDecodeFields fields
   => GenericDecodeArgs (Rec fields) where
   decodeArgs i (x : xs) = do
+    traceAnyM (unsafeCoerce x)
     fields <- mapExcept (lmap (map (ErrorAtIndex i))) (decodeFields x)
     pure { result: Rec fields, rest: xs, next: i + 1 }
   decodeArgs _ _ = fail (ForeignError "Not enough constructor arguments")
@@ -171,7 +175,14 @@ instance genericDecodeFieldsField
   => GenericDecodeFields (Field name a) where
   decodeFields x = do
     let name = reflectSymbol (SProxy :: SProxy name)
-    y <- readProp name x
+    traceAnyM name
+    y :: Foreign <- readProp name x
+    traceAnyM y
+    -- Here, `y` is 'undefined'.
+    -- `read undefined` throws error:
+    --   (TypeMismatch "String" "Undefined")
+    -- Would like to add `name`, which is the field's name, to this error.
+    --   Would this correctly describe the error in all cases of this function args?
     Field <$> read y
 
 instance genericEncodeFieldsField
